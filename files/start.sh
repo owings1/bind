@@ -21,22 +21,39 @@ if [[ ! -z "$CONFIG_GIT" ]]; then
   git -C "$git_" checkout "$GIT_BRANCH"
 
   conf="$git_/named.conf"
+  if [[ -z "$NGINX_CONF" ]] && [[ -e "$git_/nginx.conf" ]]; then
+    NGINX_CONF="$git_/nginx.conf"
+  fi
 else
   conf="/etc/bind/named.conf"
 fi
 
+if [[ -z "$CONF" ]]; then
+  CONF="$conf"
+fi
+
+if [[ -z "$NGINX_CONF" ]]; then
+  NGINX_CONF=/etc/nginx/nginx.conf
+fi
+
+echo "Using CONF=$CONF"
+echo "Using NGINX_CONF=$NGINX_CONF"
+
 shopt -s expand_aliases
 
 refresh_interval() {
+  if [[ -z "$git_" ]]; then
+    echo "WARN: Refresh not supported in non-git mode" >&2
+    return 0
+  fi
   while true; do
     sleep "$REFRESH_INTERVAL"
-    if [[ ! -z "$git_" ]]; then
-      local output=`git -C "$git_" pull`
-      if [[ "$output" =~ 'Already up to date' ]]; then
-        continue
-      fi
+    local output=`git -C "$git_" pull`
+    if [[ "$output" =~ 'Already up to date' ]]; then
+      continue
     fi
     rndc reload
+    nginx -s reload
   done
 }
 
@@ -50,6 +67,6 @@ if [[ ! -z "$REFRESH_INTERVAL" ]]; then
   refreshpid="$!"
 fi
 
-service nginx start
+nginx -c "$NGINX_CONF"
 
-/usr/sbin/named -g -c "$conf" -u bind
+/usr/sbin/named -g -c "$CONF" -u bind
